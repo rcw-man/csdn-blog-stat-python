@@ -22,7 +22,7 @@ class Worker(object):
         option.add_argument('--disable-gpu')
         option.add_argument('--disable-dev-shm-usage')
 
-        logging.info("任务开始执行")
+        logging.info(u"任务开始执行")
         # 打开chrome浏览器
         self._driver = webdriver.Chrome(executable_path=driver, options=option)
         try:
@@ -34,9 +34,9 @@ class Worker(object):
             time.sleep(0.5)
             self._info = {}
             self.stat()
-            logging.info("任务执行结束")
+            logging.info(u"任务执行结束")
         except Exception:
-            logging.error("任务运行错误", exc_info=True)
+            logging.error(u"任务运行错误", exc_info=True)
         finally:
             self._driver.close()
 
@@ -68,7 +68,7 @@ class Worker(object):
             if value is None or value == '':
                 # 处理等级信息
                 title = s.find_element_by_xpath("dd/*[1]").get_attribute("title")
-                value = title[0:title.find("级")]
+                value = title[0:title.find(u"级")]
             self._info["grade"].append(label + value)
 
     def _statArticles(self):
@@ -79,10 +79,11 @@ class Worker(object):
             articles = self._driver.find_elements_by_xpath(
                 "//div[@id='mainBox']/main/div[@class='article-list']/div")
             for article in articles:
+
                 domID, aid = article.get_attribute("id"), article.get_attribute("data-articleid")
                 if domID == "pageBox":
                     # 翻页
-                    btn = article.find_element_by_xpath("div/ul/li[text()='下一页']")
+                    btn = article.find_element_by_xpath(u"div/ul/li[text()='下一页']")
                     if "ui-pager-disabled" in btn.get_attribute("class"):
                         continue
                     btn.click()
@@ -106,10 +107,10 @@ class Worker(object):
                          "comment": desc.find_element_by_xpath("*[5]//span[@class='num']").text,
                          "title": header.text,
                          "url": header.get_attribute("href")})
-                    logging.debug("访问" + header.get_attribute("href"))
+                    logging.debug(u"访问" + header.get_attribute("href"))
                     time.sleep(2)
                 except Exception as e:
-                    logging.error("获取文章详情错误，文章：%s" % aid, exc_info=True)
+                    logging.error(u"获取文章详情错误，文章：%s" % aid, exc_info=True)
             else:
                 break
 
@@ -134,7 +135,7 @@ class Worker(object):
                 data = cursor.fetchone()
                 blog_params = list((user_name, self._info["title"], self._info["url"],
                                     ",".join(self._info["data"]) + "," + ",".join(self._info["grade"]),
-                                    "文章总数：%s, 文章总阅读数：%s" % (self._info["count"], self._info["sum"])))
+                                    u"文章总数：%s, 文章总阅读数：%s" % (self._info["count"], self._info["sum"])))
                 if data is None:
                     # 新增博客
                     blog = ('''insert into `info_blog` 
@@ -145,7 +146,7 @@ class Worker(object):
                 else:
                     # 更新博客
                     blog_key = data[0]
-                    update_params = blog_params.copy()
+                    update_params = list(blog_params)
                     blog = ('''update `info_blog` 
                     set `user_name` = %s, `title` = %s, `url` = %s, `summary` = %s, `article_summary` = %s 
                     where `k` = %s''')
@@ -205,7 +206,7 @@ class Worker(object):
                         snap_param = list(base_param)
                         snap_param.insert(0, time)
                         snap_param.insert(0, ak)
-                        data_at_snap.append(snap_param.copy())
+                        data_at_snap.append(snap_param)
                     cursor.executemany(sql_at_snap, data_at_snap)
             finally:
                 conn.commit()
