@@ -6,6 +6,12 @@ import time
 import sys
 import mysql.connector
 
+import logging
+
+# 在这里设置记录的是什么等级以上的日志
+logging.basicConfig(filename='run.log', format='%(asctime)s - %(name)s - %(levelname)s -%(module)s: %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S', level=20)
+
 
 class Worker(object):
     def __init__(self, driver, blog):
@@ -16,6 +22,7 @@ class Worker(object):
         option.add_argument('--disable-gpu')
         option.add_argument('--disable-dev-shm-usage')
 
+        logging.info("任务开始执行")
         # 打开chrome浏览器
         self._driver = webdriver.Chrome(executable_path=driver, options=option)
         try:
@@ -27,8 +34,9 @@ class Worker(object):
             time.sleep(0.5)
             self._info = {}
             self.stat()
-        except Exception as e:
-            print(e)
+            logging.info("任务执行结束")
+        except Exception:
+            logging.error("任务运行错误", exc_info=True)
         finally:
             self._driver.close()
 
@@ -67,17 +75,10 @@ class Worker(object):
         # 获取文章列表
         total, excludes = 0, set(["82762601"])
 
-        test_seq = 0
         while True:
-            if test_seq > 5:
-                break
             articles = self._driver.find_elements_by_xpath(
                 "//div[@id='mainBox']/main/div[@class='article-list']/div")
             for article in articles:
-                test_seq = test_seq + 1
-                if test_seq > 5:
-                    break
-
                 domID, aid = article.get_attribute("id"), article.get_attribute("data-articleid")
                 if domID == "pageBox":
                     # 翻页
@@ -105,16 +106,16 @@ class Worker(object):
                          "comment": desc.find_element_by_xpath("*[5]//span[@class='num']").text,
                          "title": header.text,
                          "url": header.get_attribute("href")})
-                    print("访问" + header.get_attribute("href"))
+                    logging.debug("访问" + header.get_attribute("href"))
                     time.sleep(2)
                 except Exception as e:
-                    print(e)
+                    logging.error("获取文章详情错误，文章：%s" % aid, exc_info=True)
             else:
                 break
 
         self._info["count"] = len(self._info["articles"])
         self._info["sum"] = total
-        print(self._info)
+        logging.info(self._info)
 
     def _record(self):
         # 打开数据库连接（请根据自己的用户名、密码及数据库名称进行修改）
@@ -137,8 +138,8 @@ class Worker(object):
                 if data is None:
                     # 新增博客
                     blog = ('''insert into `info_blog` 
-                            (`user_name`, `title`, `url`, `summary`, `article_summary`, `db_created`) values 
-                            (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP ); ''')
+                        (`user_name`, `title`, `url`, `summary`, `article_summary`, `db_created`) values 
+                        (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP ); ''')
                     cursor.execute(blog, blog_params)
                     blog_key = cursor.lastrowid
                 else:
@@ -146,8 +147,8 @@ class Worker(object):
                     blog_key = data[0]
                     update_params = blog_params.copy()
                     blog = ('''update `info_blog` 
-                        set `user_name` = %s, `title` = %s, `url` = %s, `summary` = %s, `article_summary` = %s 
-                        where `k` = %s''')
+                    set `user_name` = %s, `title` = %s, `url` = %s, `summary` = %s, `article_summary` = %s 
+                    where `k` = %s''')
                     update_params.append(blog_key)
                     cursor.execute(blog, update_params)
 
@@ -156,8 +157,8 @@ class Worker(object):
 
                 # 新增博客快照
                 snap = '''insert into `ops_blog_snapshot` 
-                            (`k`, `time`, `user_name`, `title`, `url`, `summary`, `article_summary`, `db_created`) values 
-                            (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP );'''
+                        (`k`, `time`, `user_name`, `title`, `url`, `summary`, `article_summary`, `db_created`) values 
+                        (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP );'''
                 blog_params.insert(0, time)
                 blog_params.insert(0, blog_key)
                 cursor.execute(snap, blog_params)
@@ -174,16 +175,16 @@ class Worker(object):
                         keys[id] = key
 
                     sql_at_insert = '''insert into `info_article` 
-                                (`id`, `blog_key`, `title`, `url`, `read`, `favour`, `comment`, `created`, `db_created`) values 
-                                (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)'''
+                            (`id`, `blog_key`, `title`, `url`, `read`, `favour`, `comment`, `created`, `db_created`) values 
+                            (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)'''
                     sql_at_update = '''update `info_article` 
-                                        set `id` = %s, `blog_key` = %s, `title` = %s, `url` = %s, 
-                                        `read` = %s, `favour` = %s, `comment` = %s
-                                        where `k` = %s'''
+                                    set `id` = %s, `blog_key` = %s, `title` = %s, `url` = %s, 
+                                    `read` = %s, `favour` = %s, `comment` = %s
+                                    where `k` = %s'''
                     data_at_snap = []
                     sql_at_snap = '''insert into `ops_article_snapshot` 
-                                     (`k`, `time`, `id`, `blog_key`, `title`, `url`, `read`, `favour`, `comment`, `db_created`) values 
-                                     (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)'''
+                                 (`k`, `time`, `id`, `blog_key`, `title`, `url`, `read`, `favour`, `comment`, `db_created`) values 
+                                 (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)'''
                     for article in articles:
                         aid = article["id"]
                         ak = keys.get(int(aid))
@@ -194,7 +195,7 @@ class Worker(object):
                             insert_param = list(base_param)
                             insert_param.append(article["created"])
                             cursor.execute(sql_at_insert, insert_param)
-                            aid = cursor.lastrowid
+                            ak = cursor.lastrowid
                         else:
                             update_param = list(base_param)
                             update_param.append(ak)
@@ -203,12 +204,9 @@ class Worker(object):
                         # 文章快照
                         snap_param = list(base_param)
                         snap_param.insert(0, time)
-                        snap_param.insert(0, aid)
-                        data_at_snap.append(snap_param)
+                        snap_param.insert(0, ak)
+                        data_at_snap.append(snap_param.copy())
                     cursor.executemany(sql_at_snap, data_at_snap)
-
-            except Exception as e:
-                print(e)
             finally:
                 conn.commit()
                 cursor.close()
